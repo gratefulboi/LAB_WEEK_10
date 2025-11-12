@@ -3,13 +3,16 @@ package com.example.lab_week_10
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 import androidx.room.Room
 import com.example.lab_week_10.database.Total
 import com.example.lab_week_10.database.TotalDatabase
+import com.example.lab_week_10.database.TotalObject
 import com.example.lab_week_10.viewmodels.TotalViewModel
+import java.util.Date
 
 class MainActivity : AppCompatActivity() {
     private val viewModel by lazy {
@@ -17,7 +20,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val db by lazy {
-        prepareDatabase()
+        Room.databaseBuilder(
+            applicationContext,
+            TotalDatabase::class.java, "total-database"
+        )
+            .allowMainThreadQueries()
+            .fallbackToDestructiveMigration()
+            .build()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,9 +40,33 @@ class MainActivity : AppCompatActivity() {
         prepareViewModel()
     }
 
+    override fun onStart() {
+        super.onStart()
+
+        // Fetching data dan show toast
+        val totalList = db.totalDao().getTotal(ID)
+        if(totalList.isNotEmpty()) {
+            val lastUpdateDate = totalList.first().total.date
+
+            // Show toast jika column date tidak kosong
+            if(lastUpdateDate.isNotEmpty()) {
+                Toast.makeText(this, "Last Update: $lastUpdateDate", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     override fun onPause() {
         super.onPause()
-        db.totalDao().update(Total(ID, viewModel.total.value!!))
+
+        // Ambil value sekarang dari ViewModel
+        val currentValue = viewModel.total.value ?: 0
+        // Ambil date sekarang
+        val currentDate = Date().toString()
+        // Buat objek TotalObject baru
+        val newTotalObject = TotalObject(value = currentValue, date = currentDate)
+
+        // update db dengan new total entity
+        db.totalDao().update(Total(id = ID, total = newTotalObject))
     }
 
     private fun updateText(total: Int) {
@@ -48,13 +81,13 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.button_increment).setOnClickListener { viewModel.incrementTotal() }
     }
 
-    // Buat TotalDatabase dengan nama total-database
-    private fun prepareDatabase(): TotalDatabase {
-        return Room.databaseBuilder(
-            applicationContext,
-            TotalDatabase::class.java, "total-database"
-        ).allowMainThreadQueries().build()
-    }
+//    // Buat TotalDatabase dengan nama total-database
+//    private fun prepareDatabase(): TotalDatabase {
+//        return Room.databaseBuilder(
+//            applicationContext,
+//            TotalDatabase::class.java, "total-database"
+//        ).allowMainThreadQueries().build()
+//    }
 
     // Inisialisasi value total dari database
     // Jika database kosong, insert total object baru dengan value 0
@@ -62,9 +95,13 @@ class MainActivity : AppCompatActivity() {
     private fun initializeValueFromDatabase() {
         val total = db.totalDao().getTotal(ID)
         if(total.isEmpty()) {
-            db.totalDao().insert(Total(id = 1, total = 0))
+            // Jika database kosong, buat new entry dengan value 0 dan tanggal kosong
+            val defaultTotalObject = TotalObject(value = 0, date = "")
+            db.totalDao().insert(Total(id = ID, total = defaultTotalObject))
+            viewModel.setTotal(0)
         } else {
-            viewModel.setTotal(total.first().total)
+            val databaseValue = total.first().total.value
+            viewModel.setTotal(databaseValue)
         }
     }
 
